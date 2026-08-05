@@ -1,8 +1,10 @@
 suite: pgstac notification triggers tests
 templates:
+  - templates/_helpers/database.tpl
   - templates/database/pgstacbootstrap/configmap.yaml
 tests:
   - it: "pgstac settings should include notification function when enabled"
+    template: templates/database/pgstacbootstrap/configmap.yaml
     set:
       pgstacBootstrap.enabled: true
       eoapi-notifier.enabled: true
@@ -24,6 +26,7 @@ tests:
           pattern: PERFORM pg_notify\('pgstac_items_change'::text
 
   - it: "pgstac settings should include INSERT trigger when enabled"
+    template: templates/database/pgstacbootstrap/configmap.yaml
     set:
       pgstacBootstrap.enabled: true
       eoapi-notifier.enabled: true
@@ -45,6 +48,7 @@ tests:
           pattern: FOR EACH STATEMENT EXECUTE FUNCTION notify_items_change_func\(\)
 
   - it: "pgstac settings should include UPDATE trigger when enabled"
+    template: templates/database/pgstacbootstrap/configmap.yaml
     set:
       pgstacBootstrap.enabled: true
       eoapi-notifier.enabled: true
@@ -63,6 +67,7 @@ tests:
           pattern: REFERENCING NEW TABLE AS data
 
   - it: "pgstac settings should include DELETE trigger when enabled"
+    template: templates/database/pgstacbootstrap/configmap.yaml
     set:
       pgstacBootstrap.enabled: true
       eoapi-notifier.enabled: true
@@ -81,6 +86,7 @@ tests:
           pattern: REFERENCING OLD TABLE AS data
 
   - it: "notification function should include operation and items in payload when enabled"
+    template: templates/database/pgstacbootstrap/configmap.yaml
     set:
       pgstacBootstrap.enabled: true
       eoapi-notifier.enabled: true
@@ -105,6 +111,7 @@ tests:
           pattern: "'id', data\\.id"
 
   - it: "notification triggers should not be included by default (disabled by default)"
+    template: templates/database/pgstacbootstrap/configmap.yaml
     set:
       pgstacBootstrap.enabled: true
     documentIndex: 0
@@ -119,6 +126,7 @@ tests:
           pattern: CREATE OR REPLACE FUNCTION notify_items_change_func\(\)
 
   - it: "notification triggers should not be included when disabled"
+    template: templates/database/pgstacbootstrap/configmap.yaml
     set:
       pgstacBootstrap.enabled: true
       eoapi-notifier.enabled: false
@@ -143,8 +151,12 @@ tests:
           pattern: notify_items_change_delete
 
   - it: "pgstac settings configmap should not be created when pgstacBootstrap is disabled"
+    template: templates/database/pgstacbootstrap/configmap.yaml
     set:
       pgstacBootstrap.enabled: false
     asserts:
+      # No ConfigMaps from this template when the bootstrap is disabled. The
+      # -initdb ConfigMap is now gated on the superuser bootstrap running (which
+      # requires pgstacBootstrap.enabled), so it is no longer orphaned here.
       - hasDocuments:
-          count: 1
+          count: 0

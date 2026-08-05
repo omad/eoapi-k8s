@@ -77,6 +77,66 @@ postgresql:
     database: "eoapi"  # can also be in secret
 ```
 
+#### Superuser vs. runtime credentials
+
+The `credentials`/`existingSecret` above are the **runtime** credentials used by the
+services (stac, raster, vector) and the `pypgstac migrate` job. Day-to-day operation does
+**not** require superuser privileges.
+
+Installing extensions (`postgis`, `btree_gist`, `unaccent`) and creating the `pgstac_*`
+roles/grants is a one-time bootstrap that **does** need elevated privileges. Supply separate
+**admin** credentials under `postgresql.external.admin` and the chart runs a superuser
+bootstrap job (mirroring the in-cluster `postgres`-vs-`eoapi` split). The admin credentials
+are used only by that job and are never injected into the runtime services.
+
+```yaml
+postgrescluster:
+  enabled: false
+postgresql:
+  type: "external-plaintext"
+  external:
+    host: "your-host"
+    database: "eoapi"
+    credentials:            # non-superuser, used by services + migrate
+      username: "eoapi"
+      password: "your-password"
+    admin:                  # superuser, used only for one-time bootstrap
+      credentials:
+        username: "postgres"
+        password: "admin-password"
+```
+
+`admin.existingSecret` takes precedence over `admin.credentials` and works with **either**
+`postgresql.type`, so the superuser password does not have to sit in a plaintext values file
+even when the runtime credentials do:
+
+```yaml
+postgresql:
+  type: "external-plaintext"
+  external:
+    host: "your-host"
+    credentials:              # runtime user, plaintext
+      username: "eoapi"
+      password: "your-password"
+    admin:
+      existingSecret:         # superuser from a secret, bootstrap only
+        name: "postgres-superuser"
+        keys:
+          username: "username"
+          password: "password"
+```
+
+The runtime role must **already exist** on the external database. The bootstrap `ALTER`s and
+`GRANT`s to it; it does not create it (for in-cluster deployments CloudNativePG creates it).
+
+If you leave `admin` unset, the superuser bootstrap job is skipped. In that case the
+extensions and `pgstac_*` roles must already exist on the external database, and the runtime
+credentials must already hold the privileges `pypgstac migrate` needs.
+
+> **Grant target:** the bootstrap grants are applied to `pgstacBootstrap.settings.user` and
+> `pgstacBootstrap.settings.database` (both default `eoapi`). Set these to match your external
+> runtime username and database so the runtime user receives the `pgstac_*` roles.
+
 > **Shared external databases + autoscaling:** Setting `postgrescluster.enabled: false` removes the
 > chart's implicit per-deployment database sizing. If the external database is shared by multiple
 > eoAPI services and other services that use the same PostgreSQL, and you enable HPA, you **must**

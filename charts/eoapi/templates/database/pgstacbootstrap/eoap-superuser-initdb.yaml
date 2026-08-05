@@ -1,8 +1,13 @@
-{{- if and .Values.postgrescluster.enabled .Values.pgstacBootstrap.enabled }}
+{{- if eq (include "eoapi.pgstacSuperuserInitEnabled" .) "true" }}
 ---
 # The eoapi database user runs normally pgstac migrate.
 # But before some initial grants need to be given with a super user.
 # https://stac-utils.github.io/pgstac/pypgstac/#option-2-create-user-with-initial-grants
+#
+# For an in-cluster postgrescluster this uses the `postgres` superuser secret.
+# For an external database it uses postgresql.external.admin credentials and only
+# runs when those are supplied; the regular runtime credentials never need
+# superuser rights.
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -36,8 +41,9 @@ spec:
               echo "Waiting for database to be ready..."
               pypgstac pgready
 
-              # Run the initial setup with superuser
-              PGUSER=postgres psql -f /opt/sql/initdb.sql
+              # Run the initial setup with the superuser/admin credentials
+              # (provided via the PG* environment variables below)
+              psql -f /opt/sql/initdb.sql
 
           resources:
             {{- toYaml .Values.pgstacBootstrap.settings.resources | nindent 12 }}
@@ -45,31 +51,7 @@ spec:
             - mountPath: /opt/sql
               name: {{ .Release.Name }}-initdb-config
           env:
-            - name: PGUSER
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.postgrescluster.name | default .Release.Name }}-pguser-postgres
-                  key: user
-            - name: PGPORT
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.postgrescluster.name | default .Release.Name }}-pguser-postgres
-                  key: port
-            - name: PGHOST
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.postgrescluster.name | default .Release.Name }}-pguser-postgres
-                  key: host
-            - name: PGPASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.postgrescluster.name | default .Release.Name }}-pguser-postgres
-                  key: password
-            - name: PGDATABASE
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.postgrescluster.name | default .Release.Name }}-pguser-postgres
-                  key: dbname
+            {{- include "eoapi.postgresqlInitEnv" . | nindent 12 }}
       volumes:
         - name: {{ .Release.Name }}-initdb-config
           configMap:

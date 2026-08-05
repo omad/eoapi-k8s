@@ -1,0 +1,222 @@
+suite: external database superuser/runtime credential separation
+templates:
+  - templates/_helpers/core.tpl
+  - templates/_helpers/database.tpl
+  - templates/database/pgstacbootstrap/eoap-superuser-initdb.yaml
+  - templates/database/pgstacbootstrap/configmap.yaml
+  - templates/database/pgstacbootstrap/job.yaml
+tests:
+  # ---- external-plaintext WITH admin credentials ----
+  - it: runs the superuser bootstrap job using the admin credentials (external-plaintext)
+    template: templates/database/pgstacbootstrap/eoap-superuser-initdb.yaml
+    set:
+      postgrescluster.enabled: false
+      pgstacBootstrap.enabled: true
+      postgresql.type: external-plaintext
+      postgresql.external.host: db.example.com
+      postgresql.external.credentials.username: eoapi_runtime
+      postgresql.external.credentials.password: runtimepass
+      postgresql.external.admin.credentials.username: pgadmin
+      postgresql.external.admin.credentials.password: adminpass
+    asserts:
+      - hasDocuments:
+          count: 1
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: PGUSER
+            value: pgadmin
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: PGPASSWORD
+            value: adminpass
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: PGHOST
+            value: db.example.com
+
+  - it: renders the initdb SQL ConfigMap when external admin credentials are set
+    template: templates/database/pgstacbootstrap/configmap.yaml
+    set:
+      postgrescluster.enabled: false
+      pgstacBootstrap.enabled: true
+      pgstacBootstrap.settings.loadSamples: false
+      postgresql.type: external-plaintext
+      postgresql.external.host: db.example.com
+      postgresql.external.credentials.username: eoapi_runtime
+      postgresql.external.credentials.password: runtimepass
+      postgresql.external.admin.credentials.username: pgadmin
+      postgresql.external.admin.credentials.password: adminpass
+    documentSelector:
+      path: metadata.name
+      value: RELEASE-NAME-initdb
+    asserts:
+      - isKind:
+          of: ConfigMap
+      - matchRegex:
+          path: data["initdb.sql"]
+          pattern: CREATE EXTENSION IF NOT EXISTS postgis
+
+  - it: pgstac migrate job uses the regular (non-admin) runtime credentials
+    template: templates/database/pgstacbootstrap/job.yaml
+    documentIndex: 0
+    set:
+      postgrescluster.enabled: false
+      pgstacBootstrap.enabled: true
+      pgstacBootstrap.settings.loadSamples: false
+      postgresql.type: external-plaintext
+      postgresql.external.host: db.example.com
+      postgresql.external.credentials.username: eoapi_runtime
+      postgresql.external.credentials.password: runtimepass
+      postgresql.external.admin.credentials.username: pgadmin
+      postgresql.external.admin.credentials.password: adminpass
+    asserts:
+      - equal:
+          path: metadata.name
+          value: RELEASE-NAME-pgstac-migrate
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: PGUSER
+            value: eoapi_runtime
+      # the admin user must never leak into the migrate/runtime credentials
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: PGUSER
+            value: pgadmin
+
+  # ---- external-plaintext WITHOUT admin credentials ----
+  - it: skips the superuser bootstrap job when no external admin credentials are set
+    template: templates/database/pgstacbootstrap/eoap-superuser-initdb.yaml
+    set:
+      postgrescluster.enabled: false
+      pgstacBootstrap.enabled: true
+      postgresql.type: external-plaintext
+      postgresql.external.host: db.example.com
+      postgresql.external.credentials.username: eoapi_runtime
+      postgresql.external.credentials.password: runtimepass
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: skips the initdb SQL ConfigMap when no external admin credentials are set
+    template: templates/database/pgstacbootstrap/configmap.yaml
+    set:
+      postgrescluster.enabled: false
+      pgstacBootstrap.enabled: true
+      pgstacBootstrap.settings.loadSamples: false
+      postgresql.type: external-plaintext
+      postgresql.external.host: db.example.com
+      postgresql.external.credentials.username: eoapi_runtime
+      postgresql.external.credentials.password: runtimepass
+    asserts:
+      # Only the pgstac-settings ConfigMap renders; the -initdb ConfigMap is gated
+      # on the superuser bootstrap, which is skipped without admin credentials.
+      - hasDocuments:
+          count: 1
+      - equal:
+          path: metadata.name
+          value: RELEASE-NAME-pgstac-settings-config
+        documentIndex: 0
+
+  # ---- admin credentials from a secret while runtime creds stay plaintext ----
+  - it: uses an admin secret for the bootstrap even when type is external-plaintext
+    template: templates/database/pgstacbootstrap/eoap-superuser-initdb.yaml
+    set:
+      postgrescluster.enabled: false
+      pgstacBootstrap.enabled: true
+      postgresql.type: external-plaintext
+      postgresql.external.host: db.example.com
+      postgresql.external.credentials.username: eoapi_runtime
+      postgresql.external.credentials.password: runtimepass
+      postgresql.external.admin.existingSecret.name: postgres-superuser
+    asserts:
+      - hasDocuments:
+          count: 1
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: PGUSER
+            valueFrom:
+              secretKeyRef:
+                name: postgres-superuser
+                key: username
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: PGPASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: postgres-superuser
+                key: password
+      # host/port/database are plaintext values, not secret refs
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: PGHOST
+            value: db.example.com
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: PGDATABASE
+            value: eoapi
+
+  - it: keeps runtime credentials plaintext and non-admin when an admin secret is used
+    template: templates/database/pgstacbootstrap/job.yaml
+    documentIndex: 0
+    set:
+      postgrescluster.enabled: false
+      pgstacBootstrap.enabled: true
+      pgstacBootstrap.settings.loadSamples: false
+      postgresql.type: external-plaintext
+      postgresql.external.host: db.example.com
+      postgresql.external.credentials.username: eoapi_runtime
+      postgresql.external.credentials.password: runtimepass
+      postgresql.external.admin.existingSecret.name: postgres-superuser
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: PGUSER
+            value: eoapi_runtime
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: PGUSER
+            valueFrom:
+              secretKeyRef:
+                name: postgres-superuser
+                key: username
+
+  # ---- external-secret WITH admin credentials ----
+  - it: runs the superuser bootstrap job using the admin secret (external-secret)
+    template: templates/database/pgstacbootstrap/eoap-superuser-initdb.yaml
+    set:
+      postgrescluster.enabled: false
+      pgstacBootstrap.enabled: true
+      postgresql.type: external-secret
+      postgresql.external.host: db.example.com
+      postgresql.external.existingSecret.name: eoapi-db
+      postgresql.external.admin.existingSecret.name: eoapi-db-admin
+    asserts:
+      - hasDocuments:
+          count: 1
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: PGUSER
+            valueFrom:
+              secretKeyRef:
+                name: eoapi-db-admin
+                key: username
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: PGPASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: eoapi-db-admin
+                key: password

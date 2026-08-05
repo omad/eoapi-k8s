@@ -187,6 +187,49 @@
                   }
                 }
               }
+            },
+            "admin": {
+              "type": "object",
+              "description": "Admin/superuser credentials used only for the one-time external database bootstrap (extensions and pgstac roles). Not used by runtime services.",
+              "properties": {
+                "credentials": {
+                  "type": "object",
+                  "description": "Admin credentials for external-plaintext bootstrap",
+                  "properties": {
+                    "username": {
+                      "type": "string",
+                      "description": "Admin/superuser username"
+                    },
+                    "password": {
+                      "type": "string",
+                      "description": "Admin/superuser password"
+                    }
+                  }
+                },
+                "existingSecret": {
+                  "type": "object",
+                  "description": "Existing secret holding admin credentials for external-secret bootstrap",
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "description": "Name of existing secret holding admin credentials"
+                    },
+                    "keys": {
+                      "type": "object",
+                      "properties": {
+                        "username": {
+                          "type": "string",
+                          "description": "Admin username key in secret"
+                        },
+                        "password": {
+                          "type": "string",
+                          "description": "Admin password key in secret"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
             }
           }
         }

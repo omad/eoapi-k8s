@@ -100,6 +100,31 @@ postgresql:
         port: "port"
         database: "database"
 
+    # Admin/superuser credentials used ONLY for the one-time database bootstrap
+    # (installing extensions and creating the pgstac_* roles/grants). These need
+    # elevated privileges: a role able to CREATE EXTENSION and CREATE ROLE.
+    # They are NOT used by the runtime services or the pgstac migrate job, which
+    # connect with the regular `credentials`/`existingSecret` above.
+    #
+    # Leave these unset if the extensions and roles are provisioned out-of-band;
+    # the superuser bootstrap job is then skipped for external databases and the
+    # regular credentials must already have the privileges pypgstac migrate needs.
+    #
+    # NOTE: the bootstrap grants target `pgstacBootstrap.settings.user` /
+    # `pgstacBootstrap.settings.database`. Set those to your external runtime
+    # user and database so the regular credentials receive the pgstac_* roles.
+    admin:
+      # Used when type is "external-plaintext"
+      credentials:
+        username: ""
+        password: ""
+      # Used when type is "external-secret"
+      existingSecret:
+        name: ""
+        keys:
+          username: "username"
+          password: "password"
+
 # this is declared as a dependency of eoapi in charts/eoapi/Chart.yaml
 postgrescluster:
   enabled: true

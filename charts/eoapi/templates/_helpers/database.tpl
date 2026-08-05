@@ -12,6 +12,118 @@ PostgreSQL environment variables based on the configured type
 {{- end }}
 
 {{/*
+Whether the pgstac superuser/admin bootstrap job (extensions + pgstac roles/grants)
+should run. This requires elevated privileges and is separate from the regular
+runtime credentials used by services and the migrate job.
+- postgrescluster: always runs (uses the in-cluster `postgres` superuser)
+- external-*: only runs when admin credentials are supplied
+*/}}
+{{- define "eoapi.pgstacSuperuserInitEnabled" -}}
+{{- if .Values.pgstacBootstrap.enabled -}}
+  {{- if .Values.postgrescluster.enabled -}}
+true
+  {{- else if or .Values.postgresql.external.admin.existingSecret.name .Values.postgresql.external.admin.credentials.username -}}
+true
+  {{- end -}}
+{{- end -}}
+{{- end }}
+
+{{/*
+PostgreSQL environment variables for the superuser/admin bootstrap job.
+Resolves elevated credentials per database type. Host/port/database point at the
+same target database as the runtime credentials so the bootstrap runs against it.
+*/}}
+{{- define "eoapi.postgresqlInitEnv" -}}
+{{- if eq .Values.postgresql.type "postgrescluster" }}
+- name: PGUSER
+  valueFrom:
+    secretKeyRef:
+      name: {{ .Values.postgrescluster.name | default .Release.Name }}-pguser-postgres
+      key: user
+- name: PGPORT
+  valueFrom:
+    secretKeyRef:
+      name: {{ .Values.postgrescluster.name | default .Release.Name }}-pguser-postgres
+      key: port
+- name: PGHOST
+  valueFrom:
+    secretKeyRef:
+      name: {{ .Values.postgrescluster.name | default .Release.Name }}-pguser-postgres
+      key: host
+- name: PGPASSWORD
+  valueFrom:
+    secretKeyRef:
+      name: {{ .Values.postgrescluster.name | default .Release.Name }}-pguser-postgres
+      key: password
+- name: PGDATABASE
+  valueFrom:
+    secretKeyRef:
+      name: {{ .Values.postgrescluster.name | default .Release.Name }}-pguser-postgres
+      key: dbname
+{{- else }}
+{{- $ext := .Values.postgresql.external }}
+{{- $admin := $ext.admin }}
+{{- /*
+Admin credentials: an existingSecret is preferred when set, regardless of
+postgresql.type, so a superuser password never has to live in plaintext values.
+Falls back to admin.credentials.
+*/ -}}
+{{- if $admin.existingSecret.name }}
+- name: PGUSER
+  valueFrom:
+    secretKeyRef:
+      name: {{ $admin.existingSecret.name }}
+      key: {{ $admin.existingSecret.keys.username }}
+- name: PGPASSWORD
+  valueFrom:
+    secretKeyRef:
+      name: {{ $admin.existingSecret.name }}
+      key: {{ $admin.existingSecret.keys.password }}
+{{- else }}
+- name: PGUSER
+  value: {{ $admin.credentials.username | quote }}
+- name: PGPASSWORD
+  value: {{ $admin.credentials.password | quote }}
+{{- end }}
+{{- /*
+Connection target: same database as the runtime credentials. Read from the
+runtime secret only when that is where those values live.
+*/ -}}
+{{- $fromSecret := eq .Values.postgresql.type "external-secret" }}
+{{- if and $fromSecret $ext.existingSecret.keys.host }}
+- name: PGHOST
+  valueFrom:
+    secretKeyRef:
+      name: {{ $ext.existingSecret.name }}
+      key: {{ $ext.existingSecret.keys.host }}
+{{- else }}
+- name: PGHOST
+  value: {{ $ext.host | quote }}
+{{- end }}
+{{- if and $fromSecret $ext.existingSecret.keys.port }}
+- name: PGPORT
+  valueFrom:
+    secretKeyRef:
+      name: {{ $ext.existingSecret.name }}
+      key: {{ $ext.existingSecret.keys.port }}
+{{- else }}
+- name: PGPORT
+  value: {{ $ext.port | quote }}
+{{- end }}
+{{- if and $fromSecret $ext.existingSecret.keys.database }}
+- name: PGDATABASE
+  valueFrom:
+    secretKeyRef:
+      name: {{ $ext.existingSecret.name }}
+      key: {{ $ext.existingSecret.keys.database }}
+{{- else }}
+- name: PGDATABASE
+  value: {{ $ext.database | quote }}
+{{- end }}
+{{- end }}
+{{- end }}
+
+{{/*
 PostgreSQL cluster secrets
 */}}
 {{- define "eoapi.postgresclusterSecrets" -}}
