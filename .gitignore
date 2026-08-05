@@ -9,5 +9,7 @@ dist
 site
 __pycache__
 
+.helm_ls_cache
+
 mock-oidc-server
 tmpcharts*
