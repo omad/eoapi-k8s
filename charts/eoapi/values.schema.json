@@ -69,11 +69,7 @@
         },
         "className": {
           "type": "string",
-          "enum": [
-            "nginx",
-            "traefik"
-          ],
-          "description": "Supported ingress controller class name (NGINX or Traefik only)"
+          "description": "Ingress controller class name. Controller-specific features (path rewriting, strip-prefix middleware) are available for 'nginx' and 'traefik'. Other classes use plain Prefix path rules."
         },
         "entrypoints": {
           "type": "string",
