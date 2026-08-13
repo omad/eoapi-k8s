@@ -30,21 +30,22 @@ Available endpoints:
 {{- end }}
 
 {{- else }}
+
 You have disabled the ingress. To access the services, you need to:
 1. Set up your own ingress controller, or
 2. Use port forwarding:
 
 {{- if has "stac" .Values.apiServices }}
-  $ kubectl port-forward -n {{ .Release.Namespace }} svc/stac 8080:{{ .Values.service.port }}
+  $ kubectl port-forward -n {{ .Release.Namespace }} svc/{{ .Release.Name }}-stac 8080:{{ .Values.service.port }}
 {{- end }}
 {{- if has "raster" .Values.apiServices }}
-  $ kubectl port-forward -n {{ .Release.Namespace }} svc/raster 8081:{{ .Values.service.port }}
+  $ kubectl port-forward -n {{ .Release.Namespace }} svc/{{ .Release.Name }}-raster 8081:{{ .Values.service.port }}
 {{- end }}
 {{- if has "vector" .Values.apiServices }}
-  $ kubectl port-forward -n {{ .Release.Namespace }} svc/vector 8082:{{ .Values.service.port }}
+  $ kubectl port-forward -n {{ .Release.Namespace }} svc/{{ .Release.Name }}-vector 8082:{{ .Values.service.port }}
 {{- end }}
 {{- if has "multidim" .Values.apiServices }}
-  $ kubectl port-forward -n {{ .Release.Namespace }} svc/multidim 8083:{{ .Values.service.port }}
+  $ kubectl port-forward -n {{ .Release.Namespace }} svc/{{ .Release.Name }}-multidim 8083:{{ .Values.service.port }}
 {{- end }}
 {{- end }}
 
