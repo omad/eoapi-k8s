@@ -1,0 +1,6 @@
+
+dist/*
+charts/*/charts
+.cr-index
+.cr-release-packages/*
+
